@@ -1,0 +1,80 @@
+# Vision-Reward-OS — Evaluation Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# This file controls which evaluators are active, where model weights are
+# stored, and what decision thresholds are applied when aggregating scores.
+# All paths support both absolute paths and paths relative to the repo root.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Global settings ──────────────────────────────────────────────────────────
+global:
+  # Device to run inference on: "cuda", "mps", or "cpu"
+  device: "cpu"
+  # Directory where downloaded model weights are cached
+  model_cache_dir: ".model_cache"
+  # Maximum wall-clock seconds allowed per evaluator per request
+  evaluator_timeout_seconds: 30
+
+# ── Evaluator registry ───────────────────────────────────────────────────────
+# Set `enabled: true` to include an evaluator in every A/B test.
+evaluators:
+
+  pickscore:
+    enabled: true
+    # HuggingFace Hub model identifier
+    model_name: "yuvalkirstain/PickScore_v1"
+    # Relative weight when computing the weighted aggregate score (0.0–1.0)
+    weight: 1.0
+    # Minimum score delta required to declare a winner (tie-breaking threshold)
+    min_score_delta: 0.01
+
+  hps_v2:
+    enabled: false
+    model_name: "xswu/HPSv2"
+    weight: 1.0
+    min_score_delta: 0.01
+
+  hps_v3:
+    enabled: false
+    # Local path to HPS v3 checkpoint (download separately)
+    model_path: ".model_cache/hps_v3.pt"
+    weight: 1.2
+    min_score_delta: 0.01
+
+  image_reward:
+    enabled: false
+    model_name: "THUDM/ImageReward"
+    weight: 0.8
+    min_score_delta: 0.005
+
+  gemini_vlm_judge:
+    enabled: false
+    # Google Gemini model version to use as VLM judge
+    model_version: "gemini-1.5-pro-latest"
+    # API key loaded from environment variable at runtime
+    api_key_env_var: "GOOGLE_API_KEY"
+    weight: 1.5
+    # Prompt template sent to the VLM judge
+    judge_prompt_template: >
+      You are an expert image quality evaluator. Given two images (A and B)
+      generated from the prompt "{prompt}", decide which image is better and
+      explain your reasoning. Return your answer as JSON with keys:
+      "preferred" ("A" or "B"), "confidence" (0.0–1.0), and "reasoning" (str).
+
+  qwen_vlm_judge:
+    enabled: false
+    model_name: "Qwen/Qwen-VL-Chat"
+    weight: 1.5
+    judge_prompt_template: >
+      Compare image A and image B generated from the prompt "{prompt}".
+      Which image better satisfies the prompt and has higher visual quality?
+      Answer in JSON: {{"preferred": "A" or "B", "confidence": float, "reasoning": str}}.
+
+# ── Aggregation settings ─────────────────────────────────────────────────────
+aggregation:
+  # Strategy for combining individual evaluator votes:
+  #   "majority_vote"   — each evaluator casts one vote; winner takes all
+  #   "weighted_sum"    — evaluator scores are multiplied by their weight
+  strategy: "majority_vote"
+  # Overall confidence threshold below which the result is flagged as
+  # "inconclusive" (informational only; does not change the verdict)
+  inconclusive_confidence_threshold: 0.05
