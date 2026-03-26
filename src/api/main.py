@@ -1,68 +1,101 @@
 """Vision-Reward-OS FastAPI application.
 
-This module initialises the FastAPI application and registers all API routes.
-The primary entry point for the microservice is the ``/evaluate/ab-test``
-endpoint, which accepts two candidate images and returns a
-:class:`~src.api.schemas.MultiDimensionalReport` aggregating scores from all
-enabled evaluators.
+This module initializes the FastAPI application and registers all API routes.
+The primary entry point is the `/evaluate/ab-test` endpoint, which aggregates
+scores from PickScore, ImageReward, HPS, and a VLM Judge.
 
-Usage (development)::
-
+Usage (development):
     uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
 """
 
 import logging
-
+import base64
+import io
+import requests
+from PIL import Image
 from fastapi import FastAPI, HTTPException, status
 
 from src.api.schemas import EvaluatorScore, InputImages, MultiDimensionalReport
 from src.evaluators.pickscore_eval import PickScoreEvaluator
+from src.evaluators.imagereward_eval import ImageRewardEvaluator
+from src.evaluators.hps_eval import HPSEvaluator
+from src.evaluators.aesthetic_eval import AestheticEvaluator
+from src.evaluators.simulacra_eval import SimulacraEvaluator
+from src.evaluators.trending_eval import TrendingEvaluator
+from src.evaluators.mps_eval import MPSEvaluator
+from src.evaluators.vlm_judge_eval import VLMJudgeEvaluator
 
 # ---------------------------------------------------------------------------
-# Logging
+# Logging Configuration
 # ---------------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Application
+# Application Setup
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="Vision-Reward-OS",
     description=(
         "Enterprise-grade microservice that aggregates SOTA Human Preference "
-        "models (PickScore, HPS v2/v3, ImageReward) and VLM-as-a-judge "
-        "(Gemini/Qwen) to evaluate Generative AI images."
+        "models and VLM-as-a-judge to evaluate Generative AI images."
     ),
     version="0.1.0",
     contact={
-        "name": "Vision-Reward-OS",
+        "name": "Tristan (Tri)",
         "url": "https://github.com/cantricao/Vision-Reward-OS",
     },
     license_info={"name": "MIT"},
 )
 
 # ---------------------------------------------------------------------------
-# Evaluator registry
-# Evaluators are instantiated once at startup and reused across requests.
+# Evaluator Registry
+# Evaluators are instantiated once at startup (Singleton pattern) and reused.
 # ---------------------------------------------------------------------------
+logger.info("Initializing evaluation engines...")
+
+# Instantiate the VLM Judge separately to extract its reasoning later
+vlm_judge = VLMJudgeEvaluator()
+
 _evaluators = [
     PickScoreEvaluator(),
+    ImageRewardEvaluator(),
+    HPSEvaluator(),
+    AestheticEvaluator(),
+    SimulacraEvaluator(),
+    MPSEvaluator()
+    TrendingEvaluator(),
+    vlm_judge,  # <-- The VLM joins the judging panel here
 ]
 
+# ---------------------------------------------------------------------------
+# Helper Functions
+# ---------------------------------------------------------------------------
+def decode_image(url: str | None, b64: str | None) -> Image.Image:
+    """Convert either a URL or a Base64 string into a PIL Image."""
+    try:
+        if b64:
+            image_data = base64.b64decode(b64)
+            return Image.open(io.BytesIO(image_data)).convert("RGB")
+        elif url:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return Image.open(io.BytesIO(response.content)).convert("RGB")
+        else:
+            raise ValueError("No image data provided.")
+    except Exception as e:
+        logger.error(f"Failed to decode image: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to process image payload. Error: {str(e)}"
+        )
 
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
-
-
 @app.get("/health", tags=["Health"])
 async def health_check() -> dict[str, str]:
-    """Liveness probe used by the Docker HEALTHCHECK and load balancers.
-
-    Returns:
-        A JSON object ``{"status": "ok"}`` when the service is healthy.
-    """
+    """Liveness probe used by Docker and load balancers."""
     return {"status": "ok"}
 
 
@@ -71,90 +104,64 @@ async def health_check() -> dict[str, str]:
     response_model=MultiDimensionalReport,
     status_code=status.HTTP_200_OK,
     tags=["Evaluation"],
-    summary="A/B image evaluation",
-    description=(
-        "Compare two candidate images using all enabled evaluators and return "
-        "an aggregated MultiDimensionalReport."
-    ),
+    summary="A/B Image Evaluation Pipeline",
 )
 async def evaluate_ab_test(payload: InputImages) -> MultiDimensionalReport:
-    """Run an A/B evaluation across all registered evaluators.
+    """Run an A/B evaluation across all registered evaluators."""
+    logger.info(f"Received A/B evaluation request. Prompt: '{payload.prompt}'")
 
-    The endpoint accepts two images (either as publicly accessible URLs or as
-    base-64 encoded strings) and an optional generation prompt.  It passes the
-    images through every enabled evaluator, aggregates the individual scores
-    via majority vote, and returns a :class:`MultiDimensionalReport`.
+    # 1. Decode images once at the API layer
+    img_a_pil = decode_image(payload.image_a_url, payload.image_a_b64)
+    img_b_pil = decode_image(payload.image_b_url, payload.image_b_b64)
 
-    Args:
-        payload: The :class:`InputImages` request body containing image A,
-            image B, and an optional prompt.
-
-    Returns:
-        A :class:`MultiDimensionalReport` with per-evaluator scores, an
-        overall winner, and an optional VLM reasoning summary.
-
-    Raises:
-        HTTPException: 422 if neither a URL nor a base-64 string is provided
-            for either image slot.
-    """
-    # Validate that at least one source is provided for each image slot.
-    if payload.image_a_url is None and payload.image_a_b64 is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Provide either 'image_a_url' or 'image_a_b64' for image A.",
-        )
-    if payload.image_b_url is None and payload.image_b_b64 is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Provide either 'image_b_url' or 'image_b_b64' for image B.",
-        )
-
-    image_a_ref = payload.image_a_url or payload.image_a_b64
-    image_b_ref = payload.image_b_url or payload.image_b_b64
-
-    logger.info(
-        "Received A/B evaluation request. prompt=%r evaluators=%d",
-        payload.prompt,
-        len(_evaluators),
-    )
-
-    # Run all evaluators and collect scores.
+    # 2. Run all evaluators sequentially
     evaluator_scores: list[EvaluatorScore] = []
     votes_a = 0
     votes_b = 0
     total_confidence = 0.0
 
+    prompt_str = payload.prompt or ""
+
     for evaluator in _evaluators:
-        result = evaluator.evaluate(image_a_ref, image_b_ref)
-        evaluator_scores.append(result)
+        try:
+            result = evaluator.evaluate(img_a_pil, img_b_pil, prompt_str)
+            evaluator_scores.append(result)
 
-        if result.preferred == "A":
-            votes_a += 1
-        else:
-            votes_b += 1
-        total_confidence += result.confidence
+            if result.preferred == "A":
+                votes_a += 1
+            else:
+                votes_b += 1
+            
+            if result.confidence is not None:
+                total_confidence += result.confidence
 
-    # Aggregate: majority vote determines overall winner.
-    # Ties are broken in favour of image A (conservative default; callers
-    # should inspect per-evaluator scores for inconclusive cases).
+        except Exception as e:
+            logger.error(f"Evaluator {evaluator.evaluator_name} failed: {e}")
+
+    if not evaluator_scores:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="All evaluation engines failed to process the request."
+        )
+
+    # 3. Aggregate Results (Majority Vote)
     overall_winner = "A" if votes_a >= votes_b else "B"
     overall_confidence = total_confidence / len(_evaluators) if _evaluators else 0.0
+
+    # Extract the natural language reasoning from our VLM Judge
+    # Fallback to a generic message if the VLM failed or returned None
+    dynamic_reasoning = vlm_judge.latest_reasoning if vlm_judge.latest_reasoning else (
+        f"Image {overall_winner} demonstrates closer alignment with the supplied "
+        "prompt based on the aggregated signals from the multi-model ensemble."
+    )
 
     report = MultiDimensionalReport(
         overall_winner=overall_winner,
         overall_confidence=round(overall_confidence, 4),
         evaluator_scores=evaluator_scores,
-        reasoning_summary=(
-            "Image A demonstrates stronger aesthetic composition and closer "
-            "alignment with the supplied prompt based on the aggregated "
-            "evaluator signals."
-            if overall_winner == "A"
-            else "Image B demonstrates stronger aesthetic composition and closer "
-            "alignment with the supplied prompt based on the aggregated "
-            "evaluator signals."
-        ),
+        reasoning_summary=dynamic_reasoning,
         prompt_used=payload.prompt,
     )
 
-    logger.info("Evaluation complete. winner=%s confidence=%.4f", overall_winner, overall_confidence)
+    logger.info(f"Evaluation complete. Winner: {overall_winner}, Confidence: {overall_confidence:.4f}")
     return report

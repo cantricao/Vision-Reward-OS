@@ -1,21 +1,32 @@
 """PickScore evaluator implementation.
 
 PickScore is a human preference model trained on the Pick-a-Pic dataset
-(Kirstain et al., 2023).  It scores image-text pairs and has been shown to
+(Kirstain et al., 2023). It scores image-text pairs and has been shown to
 correlate strongly with human judgements of image quality and prompt alignment.
+
+-------------------------------------------------------------------------------
+# Score Utility:
+The raw score represents the unnormalized logit (dot product) of human preference. 
+A higher score indicates a higher probability that a human annotator would 
+prefer this generated image for the given text prompt.
+
+# Licensing Information:
+- Codebase License: MIT License (Permissive, open for commercial use).
+- Checkpoint/Weights License: Open for research and commercial use, following 
+  the underlying LAION/CLIP model terms (OpenRAIL/MIT).
+- Dataset License: The Pick-a-Pic training dataset is licensed under 
+  CC-BY-NC 4.0 (Attribution-NonCommercial 4.0 International). Therefore, fine-tuning 
+  commercial models directly on their raw data requires legal caution.
+-------------------------------------------------------------------------------
 
 Paper: https://arxiv.org/abs/2305.01569
 Repository: https://github.com/yuvalkirstain/PickScore
-
-.. note::
-    This is a **stub/dummy implementation** for boilerplate purposes.
-    The real implementation would load the PickScore checkpoint via
-    ``transformers`` and run inference on the decoded images.  The dummy
-    version returns deterministic mock scores so that the API is fully
-    functional without requiring GPU resources or large model downloads.
 """
 
 import logging
+import torch
+from transformers import AutoProcessor, AutoModel
+from PIL import Image
 
 from src.api.schemas import EvaluatorScore
 from src.evaluators.base import BaseEvaluator
@@ -24,89 +35,77 @@ logger = logging.getLogger(__name__)
 
 
 class PickScoreEvaluator(BaseEvaluator):
-    """Evaluator that wraps the PickScore human preference model.
-
-    PickScore assigns a scalar aesthetic/preference score to each
-    (image, prompt) pair.  In an A/B comparison the image with the higher
-    score is considered the preferred output.
-
-    Attributes:
-        evaluator_name: Fixed identifier ``"PickScore"``.
-        model_name: HuggingFace model hub identifier for the PickScore
-            checkpoint.  Overridable via ``configs/eval_config.yaml``.
-
-    Args:
-        model_name: HuggingFace model hub path for the PickScore processor /
-            model weights.  Defaults to the official checkpoint.
-    """
+    """Evaluator that wraps the PickScore human preference model."""
 
     evaluator_name: str = "PickScore"
+    score_purpose: str = "Measures general commercial aesthetic and how strongly human users prefer the image based on the prompt."
+    model_name: str = "yuvalkirstain/PickScore_v1"
 
-    def __init__(
-        self,
-        model_name: str = "yuvalkirstain/PickScore_v1",
-    ) -> None:
-        """Initialise the PickScore evaluator.
+    def load_model(self) -> None:
+        """Download and cache the PickScore model weights and processor."""
+        logger.info(f"Loading {self.evaluator_name} model ({self.model_name}) on {self.device}...")
+        self.processor = AutoProcessor.from_pretrained(self.model_name)
+        self.model = AutoModel.from_pretrained(self.model_name).eval().to(self.device)
+        logger.info(f"{self.evaluator_name} loaded successfully.")
 
-        In the full implementation this constructor would download and cache
-        the PickScore model weights and processor from the HuggingFace Hub
-        using ``transformers``.
-
-        Args:
-            model_name: HuggingFace Hub path for the PickScore checkpoint.
-        """
-        self.model_name = model_name
-        logger.info(
-            "Initialised %s (model=%s) — running in STUB mode.",
-            self.evaluator_name,
-            self.model_name,
-        )
-        # TODO: Load model weights here once GPU resources are available.
-        # from transformers import AutoProcessor, AutoModel
-        # self.processor = AutoProcessor.from_pretrained(model_name)
-        # self.model = AutoModel.from_pretrained(model_name).eval()
-
-    def evaluate(self, image_a: str, image_b: str) -> EvaluatorScore:
-        """Score a pair of images using PickScore.
-
-        In stub mode this method returns deterministic mock scores.  In the
-        full implementation it would:
-
-        1. Fetch / decode both images.
-        2. Pre-process them with the PickScore processor.
-        3. Run a forward pass through the CLIP-based reward model.
-        4. Return the normalised scores as an :class:`EvaluatorScore`.
+    def evaluate(self, image_a: Image.Image, image_b: Image.Image, prompt: str) -> EvaluatorScore:
+        """Score a pair of images using PickScore's CLIP-based reward model.
 
         Args:
-            image_a: URL or base-64 string for candidate image A.
-            image_b: URL or base-64 string for candidate image B.
+            image_a: The first candidate image (PIL Image).
+            image_b: The second candidate image (PIL Image).
+            prompt: The text prompt used to generate the images.
 
         Returns:
-            An :class:`~src.api.schemas.EvaluatorScore` with mock scores.
+            An EvaluatorScore containing the real inference scores.
         """
-        logger.debug(
-            "%s.evaluate called. image_a=%r image_b=%r",
-            self.evaluator_name,
-            image_a[:40] if image_a else None,
-            image_b[:40] if image_b else None,
-        )
+        logger.debug(f"Evaluating with {self.evaluator_name} for prompt: '{prompt[:30]}...'")
 
-        # ------------------------------------------------------------------ #
-        # STUB: Replace with real model inference in production.             #
-        # ------------------------------------------------------------------ #
-        mock_score_a: float = 0.72
-        mock_score_b: float = 0.65
+        images = [image_a, image_b]
+        
+        # Preprocess the images and text prompt
+        image_inputs = self.processor(
+            images=images,
+            padding=True,
+            truncation=True,
+            max_length=77,
+            return_tensors="pt",
+        ).to(self.device)
+        
+        text_inputs = self.processor(
+            text=prompt,
+            padding=True,
+            truncation=True,
+            max_length=77,
+            return_tensors="pt",
+        ).to(self.device)
 
-        preferred = "A" if mock_score_a >= mock_score_b else "B"
-        # Confidence = normalised margin between the two scores.
-        # Guard against division by zero when both scores are 0.
-        total = mock_score_a + mock_score_b
-        confidence = round(abs(mock_score_a - mock_score_b) / total, 4) if total > 0 else 0.0
+        # Run model inference
+        with torch.no_grad():
+            image_embs = self.model.get_image_features(**image_inputs)
+            image_embs = image_embs / image_embs.norm(dim=-1, keepdim=True)
+            
+            text_embs = self.model.get_text_features(**text_inputs)
+            text_embs = text_embs / text_embs.norm(dim=-1, keepdim=True)
+            
+            # Calculate the scores (Dot product)
+            scores = self.model.logit_scale.exp() * (text_embs @ image_embs.T)[0]
+            scores = scores.cpu().tolist()
+
+        score_a = round(scores[0], 4)
+        score_b = round(scores[1], 4)
+        
+        preferred = "A" if score_a >= score_b else "B"
+        
+        # Calculate confidence using Softmax probabilities to keep it in [0, 1] range
+        probs = torch.softmax(torch.tensor([score_a, score_b]), dim=0).tolist()
+        confidence = round(abs(probs[0] - probs[1]), 4)
 
         return EvaluatorScore(
             evaluator_name=self.evaluator_name,
-            score_a=mock_score_a,
-            score_b=mock_score_b,
+            purpose=self.score_purpose,
+            score_a=score_a,
+            score_b=score_b,
             preferred=preferred,
             confidence=confidence,
         )
