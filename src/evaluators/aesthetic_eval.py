@@ -26,6 +26,7 @@ import logging
 import torch
 import torch.nn as nn
 from PIL import Image
+from huggingface_hub import hf_hub_download
 
 # Requires: pip install clip-anytorch
 import clip
