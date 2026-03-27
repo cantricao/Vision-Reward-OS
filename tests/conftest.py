@@ -62,3 +62,16 @@ def client():
     from fastapi.testclient import TestClient
     from src.api.main import app
     return TestClient(app)
+
+# ==============================================================================
+# 4. DUMMY DATA FIXTURES
+# Provides reusable, safe fake data for our test endpoints.
+# ==============================================================================
+@pytest.fixture
+def dummy_b64_image():
+    """
+    Returns a valid, mathematically correct base64 string of a 1x1 pixel PNG.
+    This safely simulates a user uploading a real image to the FastAPI payload
+    without needing to read actual files from the disk during CI/CD.
+    """
+    return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
