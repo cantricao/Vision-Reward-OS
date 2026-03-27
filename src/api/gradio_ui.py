@@ -72,16 +72,26 @@ def predict_ab_test(image_a, image_b, prompt):
 
     # Parse JSON for Bar Chart visualization
     evaluators_scores = {}
-    for eval_score in result_data['scores']:
+    for eval_score in result_data['evaluator_scores']:
         name = eval_score['evaluator_name']
+        
         evaluators_scores[f"{name} (A)"] = eval_score['score_a'] * 100
         evaluators_scores[f"{name} (B)"] = eval_score['score_b'] * 100
+        
+        purpose = eval_score.get('purpose', 'General evaluation')
+        pref = eval_score.get('preferred', 'N/A')
+        conf = eval_score.get('confidence', 0.0) * 100
+        
+        # 3. Dynamically construct the Explanation sentence in the Frontend!
+        expl_sentence = f"_{purpose}_ ➔ **Voted for Image {pref}** (Confidence: {conf:.1f}%)"
+        
+        detailed_explanations += f"- **{name}**: {expl_sentence}\n"
 
     winner = result_data['overall_winner']
-    confidence = result_data['average_confidence'] * 100
     
     summary_text = f"🏆 OVERALL WINNER: IMAGE {winner}\n"
-    summary_text += f"📊 Average Consensus Confidence: {confidence:.2f}%"
+    summary_text += f"**Executive Summary:** {result_data['reasoning_summary']}\n\n"
+    summary_text += detailed_explanations
 
     return summary_text, evaluators_scores
 
