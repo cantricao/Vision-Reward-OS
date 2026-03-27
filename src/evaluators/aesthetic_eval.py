@@ -85,7 +85,7 @@ class AestheticEvaluator(BaseEvaluator):
         self.mlp = MLP(768)  # ViT-L/14 output dimension is 768
         state_dict = torch.load(self.mlp_path, map_location=self.device)
         self.mlp.load_state_dict(state_dict)
-        self.mlp.half().to(self.device)
+        self.mlp.to(self.device)
         self.mlp.eval()
         
         logger.info(f"{self.evaluator_name} loaded successfully.")

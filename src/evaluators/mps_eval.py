@@ -38,6 +38,23 @@ class MPSEvaluator(BaseEvaluator):
         self.gdrive_id = "17qrK_aJkVNM75ZEvMEePpLj6L867MLkN"
         self.condition_prompt = "light, color, clarity, tone, style, ambiance, artistry, shape, face, hair, hands, limbs, structure, instance, texture, quantity, attributes, position, number, location, word, things."
 
+    def _process_image(self, image) -> torch.Tensor:
+        """
+        Helper method to process a PIL image into a tensor format 
+        that the MPS model understands, cast to FP16.
+        """
+        # Ensure the image is in RGB format before processing
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+            
+        # Use the HuggingFace image processor assigned during load_model
+        inputs = self.image_processor(images=image, return_tensors="pt")
+        
+        # CRITICAL FIX: Extract pixel values, cast to FP16, and move to GPU
+        pixel_values = inputs['pixel_values'].to(self.device)
+        
+        return pixel_values
+    
     def _prepare_environment(self):
         """Automates 'git clone' and 'gdown' weight retrieval."""
         # 1. Clone Repo if missing
