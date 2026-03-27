@@ -34,35 +34,7 @@ logger = logging.getLogger(__name__)
 
 import os
 import urllib
-# ==============================================================================
-# 🚨 HPSV2 VOCABULARY PATCH
-# The official hpsv2 PyPI package is notoriously missing a critical vocabulary 
-# file for its internal OpenCLIP dependency. We dynamically download and inject 
-# it into the library's installation directory at runtime to prevent fatal crashes.
-# ==============================================================================
-def _patch_hpsv2_vocab():
-    """Silently patches the missing BPE vocab file in the hpsv2 package."""
-    hps_dir = hpsv2.__path__[0]
-    target_dir = os.path.join(hps_dir, "src", "open_clip")
-    target_file = os.path.join(target_dir, "bpe_simple_vocab_16e6.txt.gz")
-    
-    url = "https://github.com/mlfoundations/open_clip/raw/main/src/open_clip/bpe_simple_vocab_16e6.txt.gz"
-    
-    os.makedirs(target_dir, exist_ok=True)
-    
-    if not os.path.exists(target_file):
-        logger.warning(f"Missing OpenCLIP vocab file detected. Downloading to {target_dir}...")
-        try:
-            urllib.request.urlretrieve(url, target_file)
-            logger.info("✅ Successfully patched HPSv2 vocabulary file!")
-        except Exception as e:
-            logger.error(f"❌ Failed to download HPSv2 vocab file: {e}")
-            raise
-    else:
-        logger.info("✅ HPSv2 vocabulary file already exists. System ready.")
 
-# Execute the patch before the class initializes
-_patch_hpsv2_vocab()
 # ==============================================================================
 
 class HPSEvaluator(BaseEvaluator):
@@ -74,11 +46,35 @@ class HPSEvaluator(BaseEvaluator):
     def load_model(self) -> None:
         """Initialize the HPS model environment.
         
-        Note: The hpsv2 library automatically manages model weights caching 
-        and lazy loading during the first inference call. We simply verify 
-        the device setup here.
+        Patches the missing BPE vocab file in the hpsv2 package.
         """
         logger.info(f"Initializing {self.evaluator_name} environment on {self.device}...")
+        
+        # ==============================================================================
+        # 🚨 HPSV2 VOCABULARY PATCH
+        # The official hpsv2 PyPI package is notoriously missing a critical vocabulary 
+        # file for its internal OpenCLIP dependency. We dynamically download and inject 
+        # it into the library's installation directory at runtime to prevent fatal crashes.
+        # ==============================================================================
+
+        hps_dir = hpsv2.__path__[0]
+        target_dir = os.path.join(hps_dir, "src", "open_clip")
+        target_file = os.path.join(target_dir, "bpe_simple_vocab_16e6.txt.gz")
+
+        url = "https://github.com/mlfoundations/open_clip/raw/main/src/open_clip/bpe_simple_vocab_16e6.txt.gz"
+
+        os.makedirs(target_dir, exist_ok=True)
+
+        if not os.path.exists(target_file):
+            logger.warning(f"Missing OpenCLIP vocab file detected. Downloading to {target_dir}...")
+            try:
+                urllib.request.urlretrieve(url, target_file)
+                logger.info("✅ Successfully patched HPSv2 vocabulary file!")
+            except Exception as e:
+                logger.error(f"❌ Failed to download HPSv2 vocab file: {e}")
+                raise
+        else:
+            logger.info("✅ HPSv2 vocabulary file already exists. System ready.")
 
     def evaluate(self, image_a: Image.Image, image_b: Image.Image, prompt: str) -> EvaluatorScore:
         """Score a pair of images against a text prompt using HPSv2.

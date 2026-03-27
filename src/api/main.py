@@ -63,7 +63,7 @@ _evaluators = [
     HPSEvaluator(),
     AestheticEvaluator(),
     SimulacraEvaluator(),
-    MPSEvaluator()
+    MPSEvaluator(),
     TrendingEvaluator(),
     vlm_judge,  # <-- The VLM joins the judging panel here
 ]

@@ -16,6 +16,7 @@ bitsandbytes>=0.41.0
 qwen-vl-utils>=0.0.1
 
 # Evaluation Models & APIs
+wandb>=0.16.0
 image-reward>=1.0
 hpsv2>=1.1.0
 trendspyg>=0.1.0

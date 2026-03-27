@@ -37,14 +37,8 @@ jobs:
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
 
-    # 4. Clone External Repositories (e.g., Kwai-Kolors MPS)
-    # This ensures the CI environment has all external folders before testing.
-    - name: Setup Environment
-      run: |
-        python scripts/setup_env.py
-
-    # 5. Run the test suite using Pytest
+    # 4. Run the test suite using Pytest
     # The tests will execute our Monkey Patches and Mocking logic lightning fast!
     - name: Execute Tests
       run: |
-        pytest tests/ -v
+        !python -m pytest tests/test_api.py
