@@ -8,6 +8,7 @@ from huggingface_hub import hf_hub_download
 
 from src.evaluators.base import BaseEvaluator
 from src.api.schemas import EvaluatorScore
+from src.evaluators.shared_backbones import BackboneRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +49,8 @@ class SimulacraEvaluator(BaseEvaluator):
 
         try:
             # 1. Load CLIP Backbone (Upgraded to ViT-L/14)
-            logger.info(f"[{self.evaluator_name}] Loading OpenAI CLIP (ViT-L/14)...")
-            self.clip_model, self.preprocess = clip.load("ViT-L/14", device=self.device)
+            # logger.info(f"[{self.evaluator_name}] Loading OpenAI CLIP (ViT-L/14)...")
+            self.clip_model, self.preprocess = BackboneRegistry.get_vit_l_14()
         
             # 2. Download Matching Aesthetic Head Weights
             # Fetching the specific checkpoint trained for 768-dimensional embeddings

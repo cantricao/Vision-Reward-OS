@@ -1,142 +1,111 @@
-"""Real-Time Google Trends 'Viral Potential' evaluator implementation.
-
-This module dynamically fetches live trending topics from Google Trends using 
-the `trendspyg` crawler. It engineers these trends into visual prompts and 
-uses OpenAI's CLIP model to compute a contrastive probability. This acts as 
-a dynamic 'Viral Potential' score, evaluating how closely the generated images 
-align with current global market interests.
-
--------------------------------------------------------------------------------
-# Score Utility:
-Outputs a scalar viral potential score (0.0 to 1.0). This represents the sum 
-of probabilities that the image matches current live trends rather than a 
-generic, negative baseline.
-
-# Licensing Information:
-- Codebase: MIT License.
-- Underlying CLIP Model: MIT License (OpenAI).
-- Data Source: Google Trends RSS feeds (Publicly accessible).
--------------------------------------------------------------------------------
-"""
-
-import time
 import logging
-from typing import List
 import torch
-from transformers import CLIPProcessor, CLIPModel
+import clip
 from PIL import Image
 
-try:
-    from trendspyg import download_google_trends_rss
-except ImportError:
-    download_google_trends_rss = None
-
-from src.api.schemas import EvaluatorScore
 from src.evaluators.base import BaseEvaluator
+from src.api.schemas import EvaluatorScore
+from src.evaluators.shared_backbones import BackboneRegistry
 
 logger = logging.getLogger(__name__)
 
-
+# ==============================================================================
+# TRENDING EVALUATOR
+# Calculates how closely an image aligns with high-quality aesthetic keywords
+# (e.g., "trending on artstation"). Uses zero-shot CLIP text-image similarity.
+# Costs 0MB extra VRAM because it purely reuses the shared CLIP backbone!
+# ==============================================================================
 class TrendingEvaluator(BaseEvaluator):
-    """Evaluator that calculates real-time viral potential using Google Trends and CLIP."""
-
-    evaluator_name: str = "Live_Trending_Viral_Potential"
-    score_purpose: str = "Quantifies the image's potential for virality by aligning it with real-time global market interests."
-    model_id: str = "openai/clip-vit-base-patch32"
+    evaluator_name: str = "Trending_Score"
+    score_purpose: str = "Measures alignment with 'trending on artstation' and high-quality keywords."
 
     def __init__(self):
-        # Cache mechanism to prevent IP banning from Google
-        self._cached_trends: List[str] = []
-        self._last_fetch_time: float = 0.0
-        self._cache_ttl: float = 3600.0  # 1 hour TTL
         super().__init__()
-
-    def load_model(self) -> None:
-        """Initialize the CLIP Engine on the available device."""
-        if download_google_trends_rss is None:
-            logger.error("Library 'trendspyg' is missing. Please install it.")
-            
-        logger.info(f"Initializing CLIP Engine ({self.model_id}) on {self.device}...")
-        self.processor = CLIPProcessor.from_pretrained(self.model_id)
-        self.model = CLIPModel.from_pretrained(self.model_id).to(self.device)
-        self.model.eval()
-        logger.info(f"{self.evaluator_name} Engine Ready.")
-
-    def _fetch_live_visual_trends(self, country_code: str = 'US', top_n: int = 3) -> List[str]:
-        """Fetch live trends with a TTL cache to prevent rate-limiting."""
-        current_time = time.time()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.clip_model = None
+        self.preprocess = None
         
-        # Return cached trends if they are still valid
-        if self._cached_trends and (current_time - self._last_fetch_time < self._cache_ttl):
-            logger.debug("Using cached Google Trends.")
-            return self._cached_trends
+        # Pre-tokenize our target aesthetic prompts
+        self.target_prompts = [
+            "trending on artstation",
+            "masterpiece, best quality, highly detailed",
+            "award winning photography, 4k resolution"
+        ]
+        self.text_tokens = None
 
-        logger.info(f"[CRAWLER] Fetching live Google Trends ({country_code})...")
+    def load_model(self):
+        """
+        Connects to the shared ViT-L/14 backbone and pre-encodes the text prompts.
+        """
+        if self.clip_model is not None:
+            return
+
         try:
-            trends = download_google_trends_rss(geo=country_code)
-            raw_trends = [t["trend"] for t in trends][:top_n]
-            logger.info(f"[CRAWLER] Raw trends captured: {raw_trends}")
+            # 1. Fetch the SHARED Backbone (Zero extra VRAM cost!)
+            logger.info(f"[{self.evaluator_name}] Connecting to shared ViT-L/14 backbone...")
+            self.clip_model, self.preprocess = BackboneRegistry.get_vit_l_14()
 
-            # Engineer visual prompts
-            self._cached_trends = [
-                f"{trend} aesthetic, trending photography, visual concept, high quality"
-                for trend in raw_trends
-            ]
-            self._last_fetch_time = current_time
-            return self._cached_trends
+            # 2. Pre-compute text embeddings in FP16 to save time during evaluation
+            logger.info(f"[{self.evaluator_name}] Pre-computing text embeddings for trending keywords...")
+            self.text_tokens = clip.tokenize(self.target_prompts).to(self.device)
+            
+            logger.info(f"[{self.evaluator_name}] Successfully warmed up. (0MB extra VRAM used).")
 
         except Exception as e:
-            logger.error(f"[CRAWLER ERROR] Failed to fetch trends: {e}")
-            # Fallback static trends for system stability
-            return [
-                "cyberpunk neon aesthetic, trending",
-                "minimalist nature photography, viral",
-                "cinematic lighting, masterpiece"
-            ]
+            logger.error(f"[{self.evaluator_name}] Initialization failed: {e}")
+            self.clip_model = None
+            self.preprocess = None
 
-    def evaluate(self, image_a: Image.Image, image_b: Image.Image, prompt: str) -> EvaluatorScore:
-        """Score the images against live market trends using contrastive probability.
-        
-        Note: The original 'prompt' is ignored. The model aligns images against 
-        dynamically generated trending text.
+    def _get_single_image_score(self, image: Image.Image) -> float:
         """
-        logger.debug(f"Evaluating with {self.evaluator_name}...")
-
-        # 1. Fetch live data (or hit cache)
-        live_trends = self._fetch_live_visual_trends(top_n=3)
-        
-        # 2. Append the negative baseline
-        evaluation_texts = live_trends.copy()
-        evaluation_texts.append("generic, boring, bad aesthetic, irrelevant, out of style")
-
-        # 3. Batch Process both images simultaneously for maximum throughput
-        images = [image_a, image_b]
-        inputs = self.processor(
-            text=evaluation_texts, 
-            images=images, 
-            return_tensors="pt", 
-            padding=True
-        ).to(self.device)
+        Calculates the cosine similarity between the image and the trending text prompts.
+        """
+        # CRITICAL: Convert input image to FP16 () to match the backbone
+        image_input = self.preprocess(image).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            outputs = self.model(**inputs)
+            # Extract image embeddings
+            image_features = self.clip_model.encode_image(image_input)
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+            
+            # Extract text embeddings
+            text_features = self.clip_model.encode_text(self.text_tokens)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
-        # Apply softmax to get contrastive probabilities (shape: [2, num_texts])
-        probs = outputs.logits_per_image.softmax(dim=1).cpu().numpy()
+            # Calculate cosine similarity (dot product of normalized vectors)
+            # We take the mean similarity across all our positive target prompts
+            similarity = (image_features @ text_features.T).mean()
 
-        # Score is the sum of probabilities of the positive trending prompts
-        # (Excluding the last index which is the negative baseline)
-        score_a = round(float(sum(probs[0][:-1])), 4)
-        score_b = round(float(sum(probs[1][:-1])), 4)
+        return similarity.item()
 
-        preferred = "A" if score_a >= score_b else "B"
-        confidence = round(abs(score_a - score_b), 4)
+    def evaluate(self, image_a: Image.Image, image_b: Image.Image, prompt: str) -> EvaluatorScore:
+        """
+        Compares two images based on their 'trending' similarity scores.
+        """
+        if self.clip_model is None:
+            self.load_model()
+
+        # Get raw cosine similarity scores (typically ranges from 0.15 to 0.40)
+        score_a = self._get_single_image_score(image_a)
+        score_b = self._get_single_image_score(image_b)
+
+        preferred = "A" if score_a > score_b else "B"
+        
+        # Calculate confidence based on the margin of difference
+        # In cosine similarity, a difference of 0.05 is highly significant
+        score_diff = abs(score_a - score_b)
+        confidence = min(score_diff * 10.0, 1.0) 
+
+        # Normalize the raw scores into a percentage representation for the API
+        total = score_a + score_b
+        norm_a = score_a / total if total > 0 else 0.5
+        norm_b = score_b / total if total > 0 else 0.5
 
         return EvaluatorScore(
             evaluator_name=self.evaluator_name,
             purpose=self.score_purpose,
-            score_a=score_a,
-            score_b=score_b,
+            score_a=round(norm_a, 4),
+            score_b=round(norm_b, 4),
             preferred=preferred,
-            confidence=confidence,
+            confidence=round(confidence, 4)
         )

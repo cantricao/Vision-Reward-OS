@@ -32,6 +32,8 @@ import clip
 
 from src.api.schemas import EvaluatorScore
 from src.evaluators.base import BaseEvaluator
+from src.evaluators.shared_backbones import BackboneRegistry
+
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +73,13 @@ class AestheticEvaluator(BaseEvaluator):
         logger.info(f"Loading {self.evaluator_name} on {self.device}...")
         
         # 1. Load the underlying CLIP model
-        self.clip_model, self.preprocess = clip.load("ViT-L/14", device=self.device)
+        self.clip_model, self.preprocess = BackboneRegistry.get_vit_l_14()
         
         # 2. Download the aesthetic MLP weights if they don't exist
-        os.makedirs(os.path.dirname(self.mlp_path), exist_ok=True)
-        if not os.path.exists(self.mlp_path):
-            logger.info("Downloading LAION Aesthetic weights...")
-            urllib.request.urlretrieve(self.mlp_url, self.mlp_path)
+        weights_path = hf_hub_download(
+                repo_id="xinleg/LION-aesthetic", # Stable community mirror
+                filename="sac+logos+ava1-l14-linearMSE.pth"
+            )
             
         # 3. Initialize and load the MLP
         self.mlp = MLP(768)  # ViT-L/14 output dimension is 768
