@@ -8,6 +8,7 @@ Usage (development):
     uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
 """
 
+from contextlib import asynccontextmanager
 import logging
 import base64
 import io
@@ -32,23 +33,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Application Setup
-# ---------------------------------------------------------------------------
-app = FastAPI(
-    title="Vision-Reward-OS",
-    description=(
-        "Enterprise-grade microservice that aggregates SOTA Human Preference "
-        "models and VLM-as-a-judge to evaluate Generative AI images."
-    ),
-    version="0.1.0",
-    contact={
-        "name": "Tristan (Tri)",
-        "url": "https://github.com/cantricao/Vision-Reward-OS",
-    },
-    license_info={"name": "MIT"},
-)
-
-# ---------------------------------------------------------------------------
 # Evaluator Registry
 # Evaluators are instantiated once at startup (Singleton pattern) and reused.
 # ---------------------------------------------------------------------------
@@ -67,6 +51,42 @@ _evaluators = [
     TrendingEvaluator(),
     vlm_judge,  # <-- The VLM joins the judging panel here
 ]
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("[SYSTEM] Initiating Warm-up Phase: Waking up all 8 Evaluators...")
+    
+    # Sequentially load all model weights into memory
+    for evaluator in _evaluators:
+        logger.info(f"[SYSTEM] Loading weights for {evaluator.evaluator_name}...")
+        evaluator.load_model()
+        
+    logger.info("[SYSTEM] Warm-up Complete: All Evaluators are armed and ready for inference!")
+    
+    yield # The server officially starts accepting incoming requests at this point.
+    
+    # Execution resumes here when the server is gracefully shutting down (e.g., Ctrl+C)
+    logger.info("[SYSTEM] Shutting down server. Clearing memory allocations...")
+    _evaluators.clear()
+
+
+# ---------------------------------------------------------------------------
+# Application Setup
+# ---------------------------------------------------------------------------
+app = FastAPI(
+    title="Vision-Reward-OS",
+    description=(
+        "Enterprise-grade microservice that aggregates SOTA Human Preference "
+        "models and VLM-as-a-judge to evaluate Generative AI images."
+    ),
+    version="0.1.0",
+    contact={
+        "name": "Tristan (Tri)",
+        "url": "https://github.com/cantricao/Vision-Reward-OS",
+    },
+    license_info={"name": "MIT"},
+    lifespan=lifespan
+)
 
 # ---------------------------------------------------------------------------
 # Helper Functions

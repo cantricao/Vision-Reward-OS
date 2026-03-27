@@ -26,6 +26,7 @@ import logging
 import torch
 from torch import nn
 from PIL import Image
+from huggingface_hub import hf_hub_download
 
 # Requires: pip install clip-anytorch
 import clip
@@ -63,8 +64,8 @@ class SimulacraEvaluator(BaseEvaluator):
     score_purpose: str = "Detects AI-specific generation artifacts, structural incoherence, and mangled geometry."
     
     # Official pre-trained weights for the ViT-L/14 CLIP model
-    mlp_url: str = "https://github.com/JD-P/simulacra-aesthetic-models/blob/main/sac_public_2022_06_29_vit_l_14_linear.pth?raw=true"
-    mlp_path: str = "configs/simulacra_aesthetic.pth"
+    repo_id: str = "feizhengcong/video-stable-diffusion"
+    filename: str = "deforum-stable-diffusion/models/sac_public_2022_06_29_vit_b_16_linear.pth"
 
     def load_model(self) -> None:
         """Load the CLIP model and the custom Simulacra MLP head."""
@@ -74,10 +75,11 @@ class SimulacraEvaluator(BaseEvaluator):
         self.clip_model, self.preprocess = clip.load("ViT-L/14", device=self.device)
         
         # Download the Simulacra MLP weights if they don't exist
-        os.makedirs(os.path.dirname(self.mlp_path), exist_ok=True)
-        if not os.path.exists(self.mlp_path):
-            logger.info("Downloading Simulacra Aesthetic weights...")
-            urllib.request.urlretrieve(self.mlp_url, self.mlp_path)
+        # logger.info("Loading Simulacra Aesthetic weights...")
+        self.mlp_path = hf_hub_download(
+            repo_id=self.repo_id,
+            filename=self.filename            
+        )
             
         # Initialize and load the MLP (ViT-L/14 output dimension is 768)
         self.mlp = MLP(768)
