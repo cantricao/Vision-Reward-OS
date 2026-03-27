@@ -1,125 +1,126 @@
-"""Simulacra Aesthetic evaluator implementation.
-
-This module wraps the Simulacra Aesthetic Predictor, a lightweight MLP 
-trained on the SimulacraBot dataset (over 300k human ratings of AI-generated 
-images). Unlike general aesthetic models, it is specifically highly attuned 
-to detecting AI artifacts, anatomical flaws, and structural incoherence.
-
--------------------------------------------------------------------------------
-# Score Utility:
-Outputs a scalar aesthetic score (typically 1-10). A higher score indicates 
-that the image is visually coherent and free from common AI generation flaws 
-(e.g., mangled limbs, nonsensical geometry).
-
-# Licensing Information:
-- Codebase & MLP Weights: MIT License (Permissive).
-- Underlying CLIP Model: MIT License (OpenAI's ViT-L/14).
-- Safe for commercial enterprise deployment.
--------------------------------------------------------------------------------
-
-Repository: https://github.com/JD-P/simulacra-aesthetic-models
-"""
-
 import os
-import urllib.request
 import logging
 import torch
-from torch import nn
+import torch.nn as nn
+import clip
 from PIL import Image
 from huggingface_hub import hf_hub_download
 
-# Requires: pip install clip-anytorch
-import clip
-
-from src.api.schemas import EvaluatorScore
 from src.evaluators.base import BaseEvaluator
+from src.api.schemas import EvaluatorScore
 
 logger = logging.getLogger(__name__)
 
-
-class MLP(nn.Module):
-    """The lightweight linear model architecture used by Simulacra Aesthetic."""
-    def __init__(self, input_size: int):
+# ==============================================================================
+# SIMULACRA AESTHETIC LINEAR HEAD
+# A simple linear layer that maps 512-dim CLIP ViT-B/16 embeddings to a 1-10 score.
+# ==============================================================================
+class SimulacraAestheticHead(nn.Module):
+    def __init__(self, input_dim=512):
         super().__init__()
-        self.input_size = input_size
-        self.layers = nn.Sequential(
-            nn.Linear(self.input_size, 1024),
-            nn.Dropout(0.2),
-            nn.Linear(1024, 128),
-            nn.Dropout(0.2),
-            nn.Linear(128, 64),
-            nn.Dropout(0.1),
-            nn.Linear(64, 16),
-            nn.Linear(16, 1)
-        )
+        self.linear = nn.Linear(input_dim, 1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.layers(x)
+    def forward(self, x):
+        return self.linear(x)
 
-
+# ==============================================================================
+# SIMULACRA EVALUATOR CLASS
+# Integrates the standalone script into our FastAPI A/B testing pipeline.
+# ==============================================================================
 class SimulacraEvaluator(BaseEvaluator):
-    """Evaluator that wraps the Simulacra Aesthetic Predictor."""
-
     evaluator_name: str = "Simulacra_Aesthetic"
-    score_purpose: str = "Detects AI-specific generation artifacts, structural incoherence, and mangled geometry."
-    
-    # Official pre-trained weights for the ViT-L/14 CLIP model
-    repo_id: str = "feizhengcong/video-stable-diffusion"
-    filename: str = "deforum-stable-diffusion/models/sac_public_2022_06_29_vit_b_16_linear.pth"
+    score_purpose: str = "Raw aesthetic quality scoring (1-10 scale)."
 
-    def load_model(self) -> None:
-        """Load the CLIP model and the custom Simulacra MLP head."""
-        logger.info(f"Loading {self.evaluator_name} on {self.device}...")
-        
-        # Load the underlying CLIP model (Must match ViT-L/14)
-        self.clip_model, self.preprocess = clip.load("ViT-L/14", device=self.device)
-        
-        # Download the Simulacra MLP weights if they don't exist
-        # logger.info("Loading Simulacra Aesthetic weights...")
-        self.mlp_path = hf_hub_download(
-            repo_id=self.repo_id,
-            filename=self.filename            
-        )
-            
-        # Initialize and load the MLP (ViT-L/14 output dimension is 768)
-        self.mlp = MLP(768)
-        state_dict = torch.load(self.mlp_path, map_location=self.device)
-        self.mlp.load_state_dict(state_dict)
-        self.mlp.to(self.device)
-        self.mlp.eval()
-        
-        logger.info(f"{self.evaluator_name} loaded successfully.")
+    def __init__(self):
+        super().__init__()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.clip_model = None
+        self.aesthetic_head = None
+        self.preprocess = None
 
-    def evaluate(self, image_a: Image.Image, image_b: Image.Image, prompt: str) -> EvaluatorScore:
-        """Score a pair of images based on coherence and absence of AI artifacts.
-        
-        Note: The 'prompt' argument is ignored as this is a pure aesthetic/quality predictor.
+    def load_model(self):
         """
-        logger.debug(f"Evaluating with {self.evaluator_name} (Ignoring prompt)")
+        Loads the heavier OpenAI CLIP ViT-L/14 model and the matching 768-dim aesthetic head.
+        This provides a more nuanced aesthetic evaluation at the cost of higher VRAM usage.
+        """
+        if self.clip_model is not None and self.aesthetic_head is not None:
+            return
 
-        img_a_input = self.preprocess(image_a).unsqueeze(0).to(self.device)
-        img_b_input = self.preprocess(image_b).unsqueeze(0).to(self.device)
+        try:
+            # 1. Load CLIP Backbone (Upgraded to ViT-L/14)
+            logger.info(f"[{self.evaluator_name}] Loading OpenAI CLIP (ViT-L/14)...")
+            self.clip_model, self.preprocess = clip.load("ViT-L/14", device=self.device)
+        
+            # 2. Download Matching Aesthetic Head Weights
+            # Fetching the specific checkpoint trained for 768-dimensional embeddings
+            logger.info(f"[{self.evaluator_name}] Fetching Simulacra ViT-L/14 weights...")
+            weights_path = hf_hub_download(
+                repo_id="feizhengcong/video-stable-diffusion",
+                filename="deforum-stable-diffusion/models/sac_public_2022_06_29_vit_l_14_linear.pth"
+            )
+
+            # 3. Initialize and Load the Linear Head
+            logger.info(f"[{self.evaluator_name}] Initializing 768-dim aesthetic linear head...")
+            # CRITICAL: input_dim MUST be 768 to match ViT-L/14 output
+            self.aesthetic_head = SimulacraAestheticHead(input_dim=768) 
+            
+            self.aesthetic_head.load_state_dict(torch.load(weights_path, map_location=self.device))
+            self.aesthetic_head.to(self.device)
+            self.aesthetic_head.eval()
+
+            logger.info(f"[{self.evaluator_name}] Successfully warmed up and ready.")
+
+        except Exception as e:
+            logger.error(f"[{self.evaluator_name}] Initialization failed: {e}")
+            self.clip_model = None
+            self.aesthetic_head = None
+
+    def _get_single_image_score(self, image: Image.Image) -> float:
+        """
+        Calculates the raw aesthetic score for a single PIL Image.
+        """
+        # Preprocess and move to device
+        image_input = self.preprocess(image).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            feat_a = self.clip_model.encode_image(img_a_input)
-            feat_b = self.clip_model.encode_image(img_b_input)
-            
-            feat_a = feat_a / feat_a.norm(dim=-1, keepdim=True)
-            feat_b = feat_b / feat_b.norm(dim=-1, keepdim=True)
-            
-            score_a = round(self.mlp(feat_a.float()).item(), 4)
-            score_b = round(self.mlp(feat_b.float()).item(), 4)
+            # Extract normalized CLIP embeddings
+            image_features = self.clip_model.encode_image(image_input)
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
 
-        preferred = "A" if score_a >= score_b else "B"
-        
-        probs = torch.softmax(torch.tensor([score_a, score_b]), dim=0).tolist()
-        confidence = round(abs(probs[0] - probs[1]), 4)
+            # Pass through the linear aesthetic head
+            score = self.aesthetic_head(image_features.float())
+
+        return score.item()
+
+    def evaluate(self, image_a: Image.Image, image_b: Image.Image, prompt: str) -> EvaluatorScore:
+        """
+        Evaluates two images and returns the comparison metrics for the API.
+        """
+        if self.clip_model is None:
+            self.load_model()
+
+        # Get raw scores for both images (scale generally 1 to 10)
+        raw_score_a = self._get_single_image_score(image_a)
+        raw_score_b = self._get_single_image_score(image_b)
+
+        # Determine preference
+        preferred = "A" if raw_score_a > raw_score_b else "B"
+
+        # Calculate a basic confidence metric based on the score difference
+        # (A difference of 1.0 or more on a 1-10 scale is considered highly confident)
+        score_diff = abs(raw_score_a - raw_score_b)
+        confidence = min(score_diff / 2.0, 1.0) # Cap confidence at 1.0 (100%)
+
+        # Normalize scores to percentages for the API response (Optional, keeps UI consistent)
+        total = raw_score_a + raw_score_b
+        norm_a = raw_score_a / total if total > 0 else 0.5
+        norm_b = raw_score_b / total if total > 0 else 0.5
 
         return EvaluatorScore(
             evaluator_name=self.evaluator_name,
             purpose=self.score_purpose,
-            score_a=score_a,
-            score_b=score_b,
+            score_a=round(norm_a, 4),
+            score_b=round(norm_b, 4),
             preferred=preferred,
-            confidence=confidence,
+            confidence=round(confidence, 4)
         )
