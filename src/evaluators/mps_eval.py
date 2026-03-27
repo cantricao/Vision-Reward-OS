@@ -38,6 +38,16 @@ class MPSEvaluator(BaseEvaluator):
         self.gdrive_id = "17qrK_aJkVNM75ZEvMEePpLj6L867MLkN"
         self.condition_prompt = "light, color, clarity, tone, style, ambiance, artistry, shape, face, hair, hands, limbs, structure, instance, texture, quantity, attributes, position, number, location, word, things."
 
+    def _tokenize(self, caption: str):
+        return self.tokenizer(
+            caption,
+            max_length=self.tokenizer.model_max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt"
+        ).input_ids
+        
+        
     def _process_image(self, image) -> torch.Tensor:
         """
         Helper method to process a PIL image into a tensor format 
