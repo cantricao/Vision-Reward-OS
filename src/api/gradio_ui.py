@@ -70,11 +70,10 @@ def predict_ab_test(image_a, image_b, prompt):
 # ==============================================================================
 # UI LAYOUT DEFINITION
 # ==============================================================================
-with gr.Blocks(title="Vision-Reward-OS | A/B Testing", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="Vision-Reward-OS | A/B Testing") as demo:
     
     gr.Markdown("# 🤖 Vision-Reward-OS | Enterprise Image A/B Evaluator")
     
-    # This component will automatically update its color and text based on backend status
     status_indicator = gr.HTML(value="<div style='text-align: center; padding: 10px; background-color: #fff3cd; color: #856404; border-radius: 5px;'><b>System Status: 🟡 CHECKING CONNECTION...</b></div>")
 
     with gr.Row():
@@ -100,7 +99,8 @@ with gr.Blocks(title="Vision-Reward-OS | A/B Testing", theme=gr.themes.Soft()) a
     # BACKGROUND POLLING TRIGGER
     # Automatically pings the /health endpoint every 3 seconds in the background.
     # --------------------------------------------------------------------------
-    demo.load(fn=check_server_status, inputs=None, outputs=status_indicator, every=3)
+    ping_timer = gr.Timer(value=3)
+    ping_timer.tick(fn=check_server_status, inputs=None, outputs=status_indicator)
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=8001, share=True)
