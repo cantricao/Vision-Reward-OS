@@ -21,7 +21,7 @@ class BaseEvaluator(ABC):
     def __init__(self):
         """Initiate Device and auto call load_model()."""
         self.device = "cuda" if __import__("torch").cuda.is_available() else "cpu"
-        self.load_model()
+        # self.load_model()
 
     @abstractmethod
     def load_model(self):

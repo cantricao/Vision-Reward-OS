@@ -44,7 +44,7 @@ class SimulacraEvaluator(BaseEvaluator):
         Loads the heavier OpenAI CLIP ViT-L/14 model and the matching 768-dim aesthetic head.
         This provides a more nuanced aesthetic evaluation at the cost of higher VRAM usage.
         """
-        if self.clip_model is not None and self.aesthetic_head is not None:
+        if self.aesthetic_head is not None:
             return
 
         try:
