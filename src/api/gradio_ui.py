@@ -50,9 +50,9 @@ def predict_ab_test(image_a, image_b, prompt):
 
     # Construct the exact JSON payload expected by the FastAPI backend
     payload = {
-        "image_a_url": "",
+        "image_a_url": None,
         "image_a_b64": numpy_to_b64(image_a),
-        "image_b_url": "",
+        "image_b_url": None,
         "image_b_b64": numpy_to_b64(image_b),
         "prompt": prompt
     }
