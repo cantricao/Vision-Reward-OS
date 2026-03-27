@@ -72,6 +72,7 @@ def predict_ab_test(image_a, image_b, prompt):
 
     # Parse JSON for Bar Chart visualization
     evaluators_scores = {}
+    detailed_explanations = "### 🤖 Detailed Evaluator Breakdown:\n\n"
     for eval_score in result_data['evaluator_scores']:
         name = eval_score['evaluator_name']
         
