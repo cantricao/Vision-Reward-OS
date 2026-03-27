@@ -45,7 +45,7 @@ class PickScoreEvaluator(BaseEvaluator):
         """Download and cache the PickScore model weights and processor."""
         logger.info(f"Loading {self.evaluator_name} model ({self.model_name}) on {self.device}...")
         self.processor = AutoProcessor.from_pretrained(self.model_name)
-        self.model = AutoModel.from_pretrained(self.model_name).eval().to(self.device)
+        self.model = AutoModel.from_pretrained(self.model_name).half().eval().to(self.device)
         logger.info(f"{self.evaluator_name} loaded successfully.")
 
     def evaluate(self, image_a: Image.Image, image_b: Image.Image, prompt: str) -> EvaluatorScore:

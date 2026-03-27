@@ -26,7 +26,6 @@ import logging
 import torch
 import torch.nn as nn
 from PIL import Image
-from huggingface_hub import hf_hub_download
 
 # Requires: pip install clip-anytorch
 import clip
@@ -77,16 +76,16 @@ class AestheticEvaluator(BaseEvaluator):
         self.clip_model, self.preprocess = BackboneRegistry.get_vit_l_14()
         
         # 2. Download the aesthetic MLP weights if they don't exist
-        weights_path = hf_hub_download(
-                repo_id="xinleg/LION-aesthetic", # Stable community mirror
-                filename="sac+logos+ava1-l14-linearMSE.pth"
-            )
+        os.makedirs(os.path.dirname(self.mlp_path), exist_ok=True)
+        if not os.path.exists(self.mlp_path):
+            logger.info("Downloading LAION Aesthetic weights...")
+            urllib.request.urlretrieve(self.mlp_url, self.mlp_path)
             
         # 3. Initialize and load the MLP
         self.mlp = MLP(768)  # ViT-L/14 output dimension is 768
         state_dict = torch.load(self.mlp_path, map_location=self.device)
         self.mlp.load_state_dict(state_dict)
-        self.mlp.to(self.device)
+        self.mlp.half().to(self.device)
         self.mlp.eval()
         
         logger.info(f"{self.evaluator_name} loaded successfully.")

@@ -60,8 +60,8 @@ class TrendingEvaluator(BaseEvaluator):
         """
         Calculates the cosine similarity between the image and the trending text prompts.
         """
-        # CRITICAL: Convert input image to FP16 () to match the backbone
-        image_input = self.preprocess(image).unsqueeze(0).to(self.device)
+        # CRITICAL: Convert input image to FP16 (.half()) to match the backbone
+        image_input = self.preprocess(image).unsqueeze(0).to(self.device).half()
 
         with torch.no_grad():
             # Extract image embeddings
