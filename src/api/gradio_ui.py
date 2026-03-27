@@ -3,6 +3,7 @@ import requests
 import logging
 from PIL import Image
 from io import BytesIO
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -30,29 +31,46 @@ def check_server_status():
 # A/B EVALUATION LOGIC
 # ==============================================================================
 def predict_ab_test(image_a, image_b, prompt):
+    """
+    Handles the UI execution logic. Converts PIL numpy arrays to Base64 strings
+    to match the FastAPI JSON schema, preventing Multipart Form parsing errors.
+    """
     if image_a is None or image_b is None or not prompt:
         return "⚠️ Error: Please upload both images and enter a prompt.", None
 
-    def pil_to_bytes(img):
-        pil_img = Image.fromarray(img)
-        buffered = BytesIO()
-        pil_img.save(buffered, format="JPEG")
-        return buffered.getvalue()
-
-    files = [
-        ('images', ('image_a.jpg', pil_to_bytes(image_a), 'image/jpeg')),
-        ('images', ('image_b.jpg', pil_to_bytes(image_b), 'image/jpeg'))
-    ]
+    logger.info(f"[UI] Preparing Base64 JSON payload. Prompt: '{prompt}'")
     
-    payload = {'prompt': prompt}
+    # Helper to convert Gradio numpy array -> PIL Image -> Base64 String
+    def numpy_to_b64(img_array):
+        pil_img = Image.fromarray(img_array)
+        buffered = BytesIO()
+        pil_img.save(buffered, format="JPEG", quality=95)
+        # Encode to base64 and decode to string for JSON serialization
+        return base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+    # Construct the exact JSON payload expected by the FastAPI backend
+    payload = {
+        "image_a_url": "",
+        "image_a_b64": numpy_to_b64(image_a),
+        "image_b_url": "",
+        "image_b_b64": numpy_to_b64(image_b),
+        "prompt": prompt
+    }
 
     try:
-        response = requests.post(f"{API_BASE_URL}/evaluate/ab-test", files=files, data=payload)
+        # Use json=payload instead of data= and files= to enforce Application/JSON
+        response = requests.post(f"{API_BASE_URL}/evaluate/ab-test", json=payload)
         response.raise_for_status()
         result_data = response.json()
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[UI] Connection failed: {e}")
+        return f"❌ Connection Error: Backend refused the request. Details: {e}", None
     except Exception as e:
-        return f"❌ Connection Error: Ensure models have finished loading. Details: {e}", None
+        logger.error(f"[UI] Unexpected error: {e}")
+        return f"❌ Unexpected Error: {e}", None
 
+    # Parse JSON for Bar Chart visualization
     evaluators_scores = {}
     for eval_score in result_data['scores']:
         name = eval_score['evaluator_name']
