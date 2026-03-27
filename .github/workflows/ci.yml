@@ -41,4 +41,4 @@ jobs:
     # The tests will execute our Monkey Patches and Mocking logic lightning fast!
     - name: Execute Tests
       run: |
-        !python -m pytest tests/test_api.py
+        python -m pytest tests/test_api.py
