@@ -76,15 +76,17 @@ def predict_ab_test(image_a, image_b, prompt):
     for eval_score in result_data['evaluator_scores']:
         name = eval_score['evaluator_name']
         
-        evaluators_scores[f"{name} (A)"] = eval_score['score_a'] * 100
-        evaluators_scores[f"{name} (B)"] = eval_score['score_b'] * 100
+        # evaluators_scores[f"{name} (A)"] = eval_score['score_a']
+        # evaluators_scores[f"{name} (B)"] = eval_score['score_b']
         
         purpose = eval_score.get('purpose', 'General evaluation')
         pref = eval_score.get('preferred', 'N/A')
-        conf = eval_score.get('confidence', 0.0) * 100
+        conf = eval_score.get('confidence', 0.0)
+        
+        evaluators_scores[f"{name} (Voted {pref})"] = conf
         
         # 3. Dynamically construct the Explanation sentence in the Frontend!
-        expl_sentence = f"_{purpose}_ ➔ **Voted for Image {pref}** (Confidence: {conf:.1f}%)"
+        expl_sentence = f"_{purpose}_ ➔ **Voted for Image {pref}** (Confidence: {conf * 100:.1f}%)"
         
         detailed_explanations += f"- **{name}**: {expl_sentence}\n"
 
@@ -116,9 +118,9 @@ with gr.Blocks(title="Vision-Reward-OS | A/B Testing") as demo:
 
     with gr.Row():
         with gr.Column():
-            output_text = gr.Textbox(label="Evaluation Summary", interactive=False)
+            output_text = gr.Markdown(label="Evaluation Summary")
         with gr.Column():
-            output_chart = gr.Label(num_top_classes=16, label="Detailed Scores (Percentage Contribution)")
+            output_chart = gr.Label(num_top_classes=8, label="Model Confidence Scores")
 
     eval_btn.click(
         fn=predict_ab_test, inputs=[image_a, image_b, prompt_input], outputs=[output_text, output_chart]

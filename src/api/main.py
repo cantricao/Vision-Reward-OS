@@ -163,8 +163,8 @@ async def evaluate_ab_test(payload: InputImages) -> MultiDimensionalReport:
             
             total_exp = exp_a + exp_b
             
-            result.score_a = (exp_a / total_exp) * 100
-            result.score_b = (exp_b / total_exp) * 100
+            result.score_a = (exp_a / total_exp)
+            result.score_b = (exp_b / total_exp)
             
             if result.preferred == "A":
                 votes_a += 1

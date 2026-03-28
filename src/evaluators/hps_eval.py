@@ -75,6 +75,8 @@ class HPSEvaluator(BaseEvaluator):
                 raise
         else:
             logger.info("✅ HPSv2 vocabulary file already exists. System ready.")
+        hpsv2
+        
 
     def evaluate(self, image_a: Image.Image, image_b: Image.Image, prompt: str) -> EvaluatorScore:
         """Score a pair of images against a text prompt using HPSv2.
