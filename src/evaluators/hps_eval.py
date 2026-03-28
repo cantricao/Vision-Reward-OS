@@ -118,7 +118,7 @@ class HPSEvaluator(BaseEvaluator):
         
         # Calculate confidence using Softmax probabilities to keep it in [0, 1] range
         probs = torch.softmax(torch.tensor([score_a, score_b]), dim=0).tolist()
-        confidence = round(abs(probs[0] - probs[1]), 4)
+        confidence = round(max(probs[0], probs[1]), 4)
 
         return EvaluatorScore(
             evaluator_name=self.evaluator_name,

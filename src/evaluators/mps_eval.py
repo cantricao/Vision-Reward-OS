@@ -145,14 +145,16 @@ class MPSEvaluator(BaseEvaluator):
                 probs = torch.softmax(torch.stack([score_a, score_b], dim=-1), dim=-1)[0]
                 
             p_a, p_b = float(probs[0]), float(probs[1])
+            raw_a_val = float(score_a[0].item() if score_a.dim() > 0 else score_a.item())
+            raw_b_val = float(score_b[0].item() if score_b.dim() > 0 else score_b.item())
             
             return EvaluatorScore(
                 evaluator_name=self.evaluator_name,
                 purpose=self.score_purpose,
-                score_a=p_a,
-                score_b=p_b,
+                score_a=raw_a_val,
+                score_b=raw_b_val,
                 preferred="A" if p_a > p_b else "B",
-                confidence=abs(p_a - p_b)
+                confidence=round(max(p_a, p_b), 4)
             )
         except Exception as e:
             logger.error(f"[{self.evaluator_name}] Evaluation error: {e}")

@@ -34,21 +34,21 @@ class BackboneRegistry:
             
         return cls._vit_l_14, cls._vit_l_14_preprocess
 
-    @classmethod
-    def get_vit_h_14(cls):
-        """
-        Returns the shared OpenCLIP ViT-H-14 (LAION-2B) backbone and preprocessor.
-        Used by custom MPS implementations, PickScore, etc.
-        """
-        if cls._vit_h_14 is None:
-            logger.info("[BACKBONE REGISTRY] Initializing shared ViT-H-14 in FP16 (~2.5GB VRAM)...")
-            model, _, preprocess = open_clip.create_model_and_transforms(
-                "ViT-H-14", 
-                pretrained="laion2b_s32b_b79k", 
-                device=cls.device
-            )
-            # Slash VRAM footprint by 50% and set to evaluation mode
-            cls._vit_h_14 = model.eval()
-            cls._vit_h_14_preprocess = preprocess
+    # @classmethod
+    # def get_vit_h_14(cls):
+    #     """
+    #     Returns the shared OpenCLIP ViT-H-14 (LAION-2B) backbone and preprocessor.
+    #     Used by custom MPS implementations, PickScore, etc.
+    #     """
+    #     if cls._vit_h_14 is None:
+    #         logger.info("[BACKBONE REGISTRY] Initializing shared ViT-H-14 in FP16 (~2.5GB VRAM)...")
+    #         model, _, preprocess = open_clip.create_model_and_transforms(
+    #             "ViT-H-14", 
+    #             pretrained="laion2b_s32b_b79k", 
+    #             device=cls.device
+    #         )
+    #         # Slash VRAM footprint by 50% and set to evaluation mode
+    #         cls._vit_h_14 = model.eval()
+    #         cls._vit_h_14_preprocess = preprocess
             
-        return cls._vit_h_14, cls._vit_h_14_preprocess
+    #     return cls._vit_h_14, cls._vit_h_14_preprocess

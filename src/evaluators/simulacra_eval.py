@@ -1,3 +1,4 @@
+import math
 import os
 import logging
 import torch
@@ -29,7 +30,7 @@ class SimulacraAestheticHead(nn.Module):
 # Integrates the standalone script into our FastAPI A/B testing pipeline.
 # ==============================================================================
 class SimulacraEvaluator(BaseEvaluator):
-    evaluator_name: str = "Simulacra_Aesthetic"
+    evaluator_name: str = " "
     score_purpose: str = "Raw aesthetic quality scoring (1-10 scale)."
 
     def __init__(self):
@@ -107,21 +108,21 @@ class SimulacraEvaluator(BaseEvaluator):
         # Determine preference
         preferred = "A" if raw_score_a > raw_score_b else "B"
 
-        # Calculate a basic confidence metric based on the score difference
-        # (A difference of 1.0 or more on a 1-10 scale is considered highly confident)
-        score_diff = abs(raw_score_a - raw_score_b)
-        confidence = min(score_diff / 2.0, 1.0) # Cap confidence at 1.0 (100%)
-
-        # Normalize scores to percentages for the API response (Optional, keeps UI consistent)
-        total = raw_score_a + raw_score_b
-        norm_a = raw_score_a / total if total > 0 else 0.5
-        norm_b = raw_score_b / total if total > 0 else 0.5
+        max_score = max(raw_score_a, raw_score_b)
+        exp_a = math.exp(raw_score_a - max_score)
+        exp_b = math.exp(raw_score_b - max_score)
+        
+        prob_a = exp_a / (exp_a + exp_b)
+        prob_b = exp_b / (exp_a + exp_b)
+        
+        # Confidence is strictly the probability of the winning choice [0.5 to 1.0]
+        confidence = max(prob_a, prob_b)
 
         return EvaluatorScore(
             evaluator_name=self.evaluator_name,
             purpose=self.score_purpose,
-            score_a=round(norm_a, 4),
-            score_b=round(norm_b, 4),
+            score_a=round(raw_score_a, 4),
+            score_b=round(raw_score_b, 4),
             preferred=preferred,
             confidence=round(confidence, 4)
         )

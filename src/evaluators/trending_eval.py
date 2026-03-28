@@ -1,4 +1,5 @@
 import logging
+import math
 import torch
 import clip
 from PIL import Image
@@ -93,19 +94,23 @@ class TrendingEvaluator(BaseEvaluator):
         
         # Calculate confidence based on the margin of difference
         # In cosine similarity, a difference of 0.05 is highly significant
-        score_diff = abs(score_a - score_b)
-        confidence = min(score_diff * 10.0, 1.0) 
-
-        # Normalize the raw scores into a percentage representation for the API
-        total = score_a + score_b
-        norm_a = score_a / total if total > 0 else 0.5
-        norm_b = score_b / total if total > 0 else 0.5
+        logit_a = score_a * 100.0
+        logit_b = score_b * 100.0
+        
+        max_logit = max(logit_a, logit_b)
+        exp_a = math.exp(logit_a - max_logit)
+        exp_b = math.exp(logit_b - max_logit)
+        
+        prob_a = exp_a / (exp_a + exp_b)
+        prob_b = exp_b / (exp_a + exp_b)
+        
+        confidence = max(prob_a, prob_b)
 
         return EvaluatorScore(
             evaluator_name=self.evaluator_name,
             purpose=self.score_purpose,
-            score_a=round(norm_a, 4),
-            score_b=round(norm_b, 4),
+            score_a=round(logit_a, 4),
+            score_b=round(logit_b, 4),
             preferred=preferred,
             confidence=round(confidence, 4)
         )
