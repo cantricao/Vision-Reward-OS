@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 import logging
 import base64
 import io
+import math
 import requests
 from PIL import Image
 from fastapi import FastAPI, HTTPException, status
@@ -146,7 +147,25 @@ async def evaluate_ab_test(payload: InputImages) -> MultiDimensionalReport:
         try:
             result = evaluator.evaluate(img_a_pil, img_b_pil, prompt_str)
             evaluator_scores.append(result)
-
+            # Extract the raw logits directly from the backend
+            raw_a = result.score_a
+            raw_b = result.score_b
+            
+            # ----------------------------------------------------------------------
+            # SAFE SOFTMAX CALCULATION
+            # Mathematically converts arbitrary raw AI scores (even massive or 
+            # negative ones) into a clean 0-100% probability distribution.
+            # ----------------------------------------------------------------------
+            # Prevent math.exp() OverflowError by subtracting the max value
+            max_score = max(raw_a, raw_b)
+            exp_a = math.exp(raw_a - max_score)
+            exp_b = math.exp(raw_b - max_score)
+            
+            total_exp = exp_a + exp_b
+            
+            result.score_a = (exp_a / total_exp) * 100
+            result.score_b = (exp_b / total_exp) * 100
+            
             if result.preferred == "A":
                 votes_a += 1
             else:
