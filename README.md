@@ -1,9 +1,10 @@
-# 👁️ Vision-Reward-OS | Enterprise Image A/B Evaluator
+****# 👁️ Vision-Reward-OS | Enterprise Image A/B Evaluator
 
 ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Production_Ready-green)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Optimized-orange)
 ![License](https://img.shields.io/badge/License-MIT-purple)
+<img width="800" alt="Screenshot 2026-03-28 142203" src="https://github.com/user-attachments/assets/ed93fa18-f47a-42d6-be17-ffbcc241deba" />
 
 An enterprise-grade, low-latency framework designed to score, compare, and analyze AI-generated images. Instead of relying on a single metric, Vision-Reward-OS orchestrates a weighted ensemble of 8 State-of-the-Art (SOTA) evaluators, ranging from mathematical aesthetic scorers to reasoning Vision-Language Models (VLMs) to determine the true winner of an A/B test.
 
@@ -40,6 +41,15 @@ The system categorizes evaluators into three evolutionary phases of Generative A
 | **1.5x** | **ImageReward** | Phase 2: Semantic Alignment | Evaluates deep text-to-image alignment and penalizes anatomical/structural defects. |
 | **2.0x** | **PickScore** | Phase 2: Advanced Preference | Highly advanced model predicting which image human users would prefer to download. |
 | **3.0x** | **Universal VLM Judge** | Phase 3: Logic & Reasoning | Delivers a definitive verdict and Chain-of-Thought reasoning. (Supports GPT-4o, Gemini, Claude). |
+---
+### 🧠 Deep Dive into Decision Logic (Explainable AI)
+
+Here is a comprehensive breakdown of the evaluation results for a sample test case ("Make it more cartoon"). Notice how the **Enterprise Weighted Voting Aggregator** intelligently processes the contradictory signals from different model phases.
+
+While lower-weight aesthetic models (Simulacra, HPS v2.1) mistakenly preferred Candidate A, the system correctly prioritized the higher-weight semantic judges (PickScore, Universal VLM Judge) to declare Candidate B the true winner, aligned with prompt fidelity.
+
+<img width="800" alt="Screenshot 2026-03-28 142339" src="https://github.com/user-attachments/assets/809a8d3c-289f-4f16-a2c0-e5bab75d88cf" />
+
 ---
 
 ## 🏗️ Architecture Design
