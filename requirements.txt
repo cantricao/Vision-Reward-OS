@@ -18,7 +18,7 @@ qwen-vl-utils>=0.0.1
 
 # Evaluation Models & APIs
 wandb>=0.16.0
-image-reward
+image-reward==1.5
 hpsv2>=1.1.0
 trendspyg>=0.1.0
 gdown>=5.1.0
