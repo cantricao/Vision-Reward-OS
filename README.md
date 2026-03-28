@@ -1,77 +1,80 @@
-# 👁️ Vision-Reward-OS
+# 👁️ Vision-Reward-OS | Enterprise Image A/B Evaluator
 
 ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Production_Ready-green)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Optimized-orange)
 ![License](https://img.shields.io/badge/License-MIT-purple)
 
-An enterprise-grade, low-latency microservice for evaluating Generative AI images using an ensemble of State-of-the-Art (SOTA) Human Preference models and Universal Vision Language Model (VLM) judges.
+An enterprise-grade, low-latency framework designed to score, compare, and analyze AI-generated images. Instead of relying on a single metric, Vision-Reward-OS orchestrates a weighted ensemble of 8 State-of-the-Art (SOTA) evaluators, ranging from mathematical aesthetic scorers to reasoning Vision-Language Models (VLMs) to determine the true winner of an A/B test.
 
 ---
 
 ## 🛑 The Problem
 
-Evaluating the quality of Generative AI images is a fundamentally hard problem. Traditional metrics (FID, CLIP score) often fail to capture what humans actually prefer. Teams building text-to-image pipelines are left without a reliable, automated signal to:
+Evaluating the quality of Generative AI images is fundamentally difficult. Traditional metrics (FID, raw CLIP scores) fail to capture what humans actually prefer. Teams building text-to-image pipelines lack a reliable, automated signal to:
 
-- Compare two candidate images in an A/B test (e.g., Midjourney vs. Flux).
-- Detect visual regressions when fine-tuning or swapping model checkpoints.
-- Rank outputs at scale without expensive and slow human annotation.
+- A/B Test Models: Objectively compare outputs
+- Detect Regressions: Spot visual degradation when fine-tuning checkpoints.
+- Rank Outputs: Sort generations at scale without expensive and slow human annotation.
 
-A single model is rarely sufficient. Different evaluators capture different aspects of quality (aesthetics, text alignment, structural coherence, viral potential). To achieve human-level QA, their signals must be aggregated intelligently.
+A single model is rarely sufficient. A visually stunning image might completely ignore the text prompt, while a perfectly aligned image might look hideous. To achieve human-level QA, multiple signals must be intelligently aggregated.
 
 ---
 
-## 💡 The Solution
+## 💡 The Solution: Enterprise Weighted Voting
 
-**Vision-Reward-OS** is a composable, extensible evaluation microservice that aggregates signals from **8 distinct SOTA evaluators** into a single, highly interpretable JSON report. 
+**Vision-Reward-OS** is a composable evaluation microservice that prevents "dumb" aesthetic models from outvoting "smart" semantic judges.
 
-It leverages both mathematical alignment (CLIP-based reward models) and Agentic reasoning (VLM Chain-of-Thought) to provide rigorous, auditable QA for Generative AI outputs.
+It aggregates signals from 8 distinct evaluators using an Enterprise Weighted Voting System, prioritizing prompt fidelity and human preference over raw pixel aesthetics. It outputs a highly interpretable JSON report and an interactive UI dashboard.
 
-### 🏆 The Judging Panel (Integrated Engines)
+### 🏆 The Judging Panel (3 Phases of Evaluation)
+The system categorizes evaluators into three evolutionary phases of Generative AI assessment, assigning higher voting weights to more advanced models:
 
-| Evaluator | Type | Primary Purpose |
-|---|---|---|
-| **PickScore** | Human Preference | Measures general commercial aesthetic and human preference based on the prompt. |
-| **ImageReward** | Semantic Alignment | Evaluates deep text-to-image alignment and penalizes structural defects. |
-| **HPS v2.1** | Aesthetic Calibration | Calibrates the image against large-scale human aesthetic preference datasets. |
-| **LAION Aesthetic** | Pure Aesthetic | Assesses pure visual appeal and artistic composition, blind to the text prompt. |
-| **Simulacra Aesthetic** | Artifact Detection | Detects AI-specific generation artifacts, structural incoherence, and mangled geometry. |
-| **Google Trends + CLIP** | Viral Potential | Quantifies the image's potential for virality by aligning it with real-time global market interests. |
-| **Kwai-Kolors MPS** | Multi-Dimensional | Provides a balanced multi-dimensional assessment of both visual quality and prompt adherence. |
-| **Universal VLM Judge** | Chain-of-Thought | Delivers a definitive human-like verdict and reasoning based on strict commercial standards. (Supports OpenAI, Gemini, and Local VLMs). |
-
-The service exposes a clean REST API built with **FastAPI**, following strict **OOP principles** with a pluggable `BaseEvaluator` interface.
-
+| Weight | Evaluator | Phase | Primary Purpose |
+| :---: | :--- | :--- | :--- |
+| **0.5x** | **LAION Aesthetic** | Phase 1: Pure Aesthetics | Assesses pure visual appeal and artistic composition, *blind to the text prompt*. |
+| **0.5x** | **Simulacra Aesthetic** | Phase 1: Pure Aesthetics | Evaluates raw aesthetic quality based on community-driven AI art preferences. |
+| **0.8x** | **Trending Score** | Phase 1.5: Keyword Match | Quantifies viral potential by aligning with keywords like *"trending on artstation"*. |
+| **0.8x** | **Kwai-Kolors MPS** | Phase 1.5: Multi-Dimensional | Provides a balanced assessment across clarity, contrast, and color. |
+| **1.5x** | **HPS v2.1** | Phase 2: Human Preference | Calibrates the image against large-scale human aesthetic preference datasets. |
+| **1.5x** | **ImageReward** | Phase 2: Semantic Alignment | Evaluates deep text-to-image alignment and penalizes anatomical/structural defects. |
+| **2.0x** | **PickScore** | Phase 2: Advanced Preference | Highly advanced model predicting which image human users would prefer to download. |
+| **3.0x** | **Universal VLM Judge** | Phase 3: Logic & Reasoning | Delivers a definitive verdict and Chain-of-Thought reasoning. (Supports GPT-4o, Gemini, Claude). |
 ---
 
 ## 🏗️ Architecture Design
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                           FastAPI Microservice                           │
-│  POST /evaluate/ab-test                                                  │
+│                           Vision-Reward-OS                               │
 │                                                                          │
 │  ┌──────────────┐     ┌──────────────────────────────────────────┐       │
-│  │ InputImages  │────▶│          Image Decoding Engine           │       │
+│  │ InputImages  │───▶ │           Image Decoding Engine          │       │
 │  │ (URL/Base64) │     │   (Decodes to PIL.Image once in RAM)     │       │
 │  └──────────────┘     └─────────────────┬────────────────────────┘       │
 │                                         │                                │
 │          ┌──────────────────────────────┼─────────────────────────────┐  │
 │          ▼                              ▼                             ▼  │
 │ ┌──────────────────┐           ┌──────────────────┐          ┌─────────┐ │
-│ │ Alignment Models │           │ Aesthetic Models │          │ Advanced│ │
+│ │ Phase 1 Models   │           │ Phase 2 Models   │          │ Phase 3 │ │
+│ │ (Low Weight)     │           │ (Medium Weight)  │          │ (High)  │ │
 │ ├──────────────────┤           ├──────────────────┤          ├─────────┤ │
-│ │ 1. PickScore     │           │ 5. LAION Aesth.  │          │ 7.Trend │ │
-│ │ 2. ImageReward   │           │ 6. Simulacra     │          │ 8. VLM  │ │
-│ │ 3. HPS v2.1      │           └────────┬─────────┘          │  Judge  │ │
-│ │ 4. Kwai MPS      │                    │                    └────┬────┘ │
-│ └────────┬─────────┘                    │                         │      │
+│ │ - LAION          │           │ - ImageReward    │          │ - VLM   │ │
+│ │ - Simulacra      │           │ - PickScore      │          │   Judge │ │
+│ │ - Trending       │           │ - HPS v2.1       │          │         │ │
+│ │ - Kwai MPS       │           │                  │          │         │ │
+│ └────────┬─────────┘           └────────┬─────────┘          └────┬────┘ │
 │          │                              │                         │      │
 │          └──────────────────────────────┼─────────────────────────┘      │
 │                                         ▼                                │
 │                            ┌────────────────────────┐                    │
+│                            │    Weighted Voting     │                    │
+│                            │   Aggregator Engine    │                    │
+│                            └────────────┬───────────┘                    │
+│                                         ▼                                │
+│                            ┌────────────────────────┐                    │
 │                            │ MultiDimensionalReport │                    │
-│                            │   (Aggregated JSON)    │                    │
+│                            │  (JSON & Gradio UI)    │                    │
 │                            └────────────────────────┘                    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
@@ -79,7 +82,7 @@ The service exposes a clean REST API built with **FastAPI**, following strict **
 
 ---
 
-* **Decode-Once Principle:** Images are downloaded/decoded at the API layer and passed as RAM-resident PIL.Image objects to prevent I/O bottlenecks.
+* **Decode-Once Principle:** Images are downloaded/decoded at the API layer and passed as RAM-resident `PIL.Image` objects to prevent I/O bottlenecks.
 
 * **Vendor-Agnostic VLM:** The Universal VLM Judge uses the standard OpenAI protocol. By changing environment variables, you can seamlessly swap between GPT-4o, Gemini 2.5 Pro, or a local Qwen2-VL running on vLLM.
 
@@ -96,9 +99,11 @@ Vision-Reward-OS relies on a specific matrix of PyTorch and Transformer versions
 Run the automated setup script to install all dependencies and clone necessary remote repositories (e.g., Kwai-Kolors MPS):
 
 ```bash
-python scripts/setup_env.py
+git clone https://github.com/yourusername/Vision-Reward-OS.git
+cd Vision-Reward-OS
+pip install -r requirements.txt
 ```
-_(Note: If you are running locally without the setup script, refer to requirements.txt and ensure you run `git clone https://github.com/Kwai-Kolors/MPS.git` into your working directory)._
+_(Note: The system will automatically download model weights on the first run, which may require several GBs of disk space)._
 
 
 ### 2. Configure Environment Variables
@@ -129,40 +134,42 @@ export VLM_MODEL_NAME="qwen2-vl-7b-instruct"
 
 ### 3. Run the Development Server
 ```bash
-uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+./run.sh
 ```
 
-### 4. Interactive API Docs (Swagger UI)
-Navigate to http://127.0.0.1:8000/docs to access the auto-generated Swagger UI. You can test the A/B evaluation endpoint directly from your browser.
+### 4. Run the REST API (FastAPI)
+For production integration, run the headless microservice:
+
+```bash
+uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+```
 
 ---
 
 ## 📡 API Usage Example
-Send a POST request to /evaluate/ab-test:
-
+Evaluate an A/B test programmatically:
 ```bash
 curl -X POST "http://localhost:8000/evaluate/ab-test" \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt": "A futuristic cyberpunk city with flying cars at sunset, high quality, 4k",
-    "image_a_url": "[https://example.com/generated_image_v1.jpg](https://example.com/generated_image_v1.jpg)",
-    "image_b_url": "[https://example.com/generated_image_v2.jpg](https://example.com/generated_image_v2.jpg)"
+    "prompt": "A futuristic cyberpunk city with flying cars at sunset, highly detailed",
+    "image_a_url": "https://example.com/candidate_a.jpg",
+    "image_b_url": "https://example.com/candidate_b.jpg"
   }'
 ```
-The system will return a detailed MultiDimensionalReport containing individual engine scores, an aggregated overall winner, and a brutal, commercially-driven reasoning summary from the VLM Art Director.
 
 ---
 
 ## 📂 Project Structure
 ```plaintext
 Vision-Reward-OS/
-├── configs/                # Automatically stores downloaded .pth weights
 ├── src/
 │   ├── api/
-│   │   ├── main.py         # FastAPI application and Orchestrator
-│   │   └── schemas.py      # Pydantic request/response models with embedded purposes
+│   │   ├── main.py             # FastAPI application and Orchestrator
+│   │   ├── gradio_ui.py        # Interactive Web Dashboard
+│   │   └── schemas.py          # Pydantic data models
 │   └── evaluators/
-│       ├── base.py         # Abstract BaseEvaluator interface
+│       ├── base.py             # Abstract BaseEvaluator interface
 │       ├── pickscore_eval.py 
 │       ├── imagereward_eval.py
 │       ├── hps_eval.py
@@ -171,9 +178,8 @@ Vision-Reward-OS/
 │       ├── trending_eval.py
 │       ├── mps_eval.py
 │       └── vlm_judge_eval.py
-├── .env.example
-├── Dockerfile
-├── requirements.txt
+├── run.sh                      # Shell script to launch Gradio UI
+├── requirements.txt            # Pinned dependencies for stability
 └── README.md
 ```
 ---

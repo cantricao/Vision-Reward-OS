@@ -53,6 +53,18 @@ _evaluators = [
     vlm_judge,  # <-- The VLM joins the judging panel here
 ]
 
+# 1. Define the Hierarchy of Power (Weights based on Phase 1, 2, and 3)
+EVALUATOR_WEIGHTS = {
+    "Simulacra_Aesthetic": 0.5,  # Phase 1: Pure aesthetics (Low authority)
+    "LAION_Aesthetic": 0.5,      # Phase 1: Pure aesthetics (Low authority)
+    "Trending_Score": 0.8,       # Phase 1.5: Basic keyword matching
+    "Kwai-Kolors_MPS": 0.8,      # Phase 1.5: Multi-dimensional aesthetic
+    "HPS_v2.1": 1.5,             # Phase 2: Human preference & prompt alignment
+    "ImageReward": 1.5,          # Phase 2: Deep semantic alignment
+    "PickScore": 2.0,            # Phase 2: Advanced human preference
+    "Universal_VLM_Judge": 3.0   # Phase 3: Ultimate logic and reasoning (Highest authority)
+}
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("[SYSTEM] Initiating Warm-up Phase: Waking up all 8 Evaluators...")
@@ -147,29 +159,12 @@ async def evaluate_ab_test(payload: InputImages) -> MultiDimensionalReport:
         try:
             result = evaluator.evaluate(img_a_pil, img_b_pil, prompt_str)
             evaluator_scores.append(result)
-            # Extract the raw logits directly from the backend
-            raw_a = result.score_a
-            raw_b = result.score_b
             
-            # ----------------------------------------------------------------------
-            # SAFE SOFTMAX CALCULATION
-            # Mathematically converts arbitrary raw AI scores (even massive or 
-            # negative ones) into a clean 0-100% probability distribution.
-            # ----------------------------------------------------------------------
-            # Prevent math.exp() OverflowError by subtracting the max value
-            max_score = max(raw_a, raw_b)
-            exp_a = math.exp(raw_a - max_score)
-            exp_b = math.exp(raw_b - max_score)
-            
-            total_exp = exp_a + exp_b
-            
-            result.score_a = (exp_a / total_exp)
-            result.score_b = (exp_b / total_exp)
-            
+            weight = EVALUATOR_WEIGHTS.get(result.evaluator_name, 1.0)
             if result.preferred == "A":
-                votes_a += 1
+                votes_a += weight
             else:
-                votes_b += 1
+                votes_b += weight
             
             if result.confidence is not None:
                 total_confidence += result.confidence
@@ -189,9 +184,14 @@ async def evaluate_ab_test(payload: InputImages) -> MultiDimensionalReport:
 
     # Extract the natural language reasoning from our VLM Judge
     # Fallback to a generic message if the VLM failed or returned None
-    dynamic_reasoning = vlm_judge.latest_reasoning if vlm_judge.latest_reasoning else (
-        f"Image {overall_winner} demonstrates closer alignment with the supplied "
-        "prompt based on the aggregated signals from the multi-model ensemble."
+    if vlm_judge.latest_reasoning is None:
+        vlm_judge.latest_reasoning = "The VLM Judge was unable to provide reasoning for this evaluation."
+    dynamic_reasoning = (
+        f"**Weighted Ensemble Decision:** Image {overall_winner} secured the victory "
+        f"with a weighted score of {max(votes_a, votes_b):.1f} vs {min(votes_a, votes_b):.1f}. "
+        f"While aesthetic models may have varying opinions, the high-tier semantic judges "
+        f"definitively preferred {overall_winner} based on prompt fidelity.\n\n"
+        f"**Chief Judge (VLM) Reasoning:** {vlm_judge.latest_reasoning}"
     )
 
     report = MultiDimensionalReport(

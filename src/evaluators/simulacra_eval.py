@@ -30,7 +30,7 @@ class SimulacraAestheticHead(nn.Module):
 # Integrates the standalone script into our FastAPI A/B testing pipeline.
 # ==============================================================================
 class SimulacraEvaluator(BaseEvaluator):
-    evaluator_name: str = " "
+    evaluator_name: str = "Simulacra_Aesthetic"
     score_purpose: str = "Raw aesthetic quality scoring (1-10 scale)."
 
     def __init__(self):
