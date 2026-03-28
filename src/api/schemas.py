@@ -61,8 +61,8 @@ class EvaluatorScore(BaseModel):
         default="General image evaluation.",
         description="The specific business or technical purpose of this evaluator's score."
     )
-    score_a: float = Field(description="Raw score for image A.")
-    score_b: float = Field(description="Raw score for image B.")
+    score_a: float = Field(description="Percentage score for image A (0-100).")
+    score_b: float = Field(description="Percentage score for image B (0-100).")
     preferred: str = Field(
         description="The preferred image: 'A' or 'B'.",
         pattern="^[AB]$",

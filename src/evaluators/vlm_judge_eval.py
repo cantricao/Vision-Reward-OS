@@ -162,7 +162,7 @@ class VLMJudgeEvaluator(BaseEvaluator):
 
             return EvaluatorScore(
                 evaluator_name=self.evaluator_name,
-                purpose=self.score_purpose,
+                purpose=self.latest_reasoning,
                 score_a=score_a,
                 score_b=score_b,
                 preferred=preferred,
@@ -174,7 +174,7 @@ class VLMJudgeEvaluator(BaseEvaluator):
             self.latest_reasoning = "VLM evaluation failed due to an API or parsing error."
             return EvaluatorScore(
                 evaluator_name=self.evaluator_name,
-                purpose=self.score_purpose,
+                purpose=self.latest_reasoning,
                 score_a=0.0,
                 score_b=0.0,
                 preferred="A",
