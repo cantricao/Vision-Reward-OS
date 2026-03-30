@@ -157,8 +157,7 @@ class VLMJudgeEvaluator(BaseEvaluator):
             score_a = round((align_a + cohere_a + style_a) / 3.0, 4)
             score_b = round((align_b + cohere_b + style_b) / 3.0, 4)
             
-            # Confidence is the margin of victory in the unified score
-            confidence = round(abs(score_a - score_b), 4)
+            confidence = round(max(score_a , score_b), 4)
 
             return EvaluatorScore(
                 evaluator_name=self.evaluator_name,
